@@ -1,0 +1,33 @@
+service: aws-node-crud
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: us-west-2
+
+functions:
+  getUsers:
+    handler: src/user.getUsers
+    events:
+      - httpApi:
+          path: /users
+          method: get
+  addUser:
+    handler: src/user.addUser
+    events:
+      - httpApi:
+          path: /users
+          method: post
+  updateUser:
+    handler: src/user.updateUser
+    events:
+      - httpApi:
+          path: /users
+          method: put
+  deleteUser:
+    handler: src/user.deleteUser
+    events:
+      - httpApi:
+          path: /users
+          method: delete
