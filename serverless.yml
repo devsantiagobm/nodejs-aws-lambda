@@ -5,6 +5,14 @@ provider:
   name: aws
   runtime: nodejs18.x
   region: us-west-2
+  iam:
+    role:
+      statements:  
+        - Effect: Allow
+          Action: 
+            - dynamodb:*
+          Resource: 
+            - arn:aws:dynamodb:us-west-2:058264440990:table/usuarios
 
 functions:
   getUsers:
@@ -23,11 +31,31 @@ functions:
     handler: src/user.updateUser
     events:
       - httpApi:
-          path: /users
+          path: /users/{id}
           method: put
   deleteUser:
     handler: src/user.deleteUser
     events:
       - httpApi:
-          path: /users
+          path: /users/{id}
           method: delete
+
+
+resources:
+  Resources:
+    usersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: usuarios
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+
+plugins:
+  - serverless-offline          

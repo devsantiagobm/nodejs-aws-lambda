@@ -1,12 +1,23 @@
+const { DynamoDB, SES } = require("aws-sdk")
+const { v4 } = require("uuid")
+
 module.exports.addUser = async (event) => {
     try {
         const { nombre, cedula } = JSON.parse(event.body)
 
         if (!nombre || !cedula) return { error: "Los campos nombre y cedula son obligatorios" }
 
+        const database = new DynamoDB.DocumentClient()
+
+        const Item = {
+            nombre, cedula, id: v4()
+        }
+
+        await database.put({ TableName: "usuarios", Item }).promise();
+
         return {
             mensaje: "Usuario creado correctamente",
-            usuario: { nombre, cedula }
+            usuario: Item
         }
     } catch (error) {
         return {
@@ -16,48 +27,64 @@ module.exports.addUser = async (event) => {
 }
 
 module.exports.updateUser = async (event) => {
-    const { nombre, cedula } = JSON.parse(event.body)
 
-    if (!nombre || !cedula) return { error: "Los campos nombre y cedula son obligatorios" }
+    try {
+        const { nombre, cedula } = JSON.parse(event.body)
+        const { id } = event.pathParameters
 
-    return {
-        mensaje: "El usuario ha sido actualizado",
-        usuario: { nombre, cedula }
+        const database = new DynamoDB.DocumentClient()
+
+        if (!nombre || !cedula) return { error: "Los campos nombre y cedula son obligatorios" }
+
+        const usuario = await database.update({
+            TableName: "usuarios",
+            Key: { id },
+            UpdateExpression: "set nombre = :nombre, cedula = :cedula",
+            ExpressionAttributeValues: {
+                ":nombre": nombre,
+                ":cedula": cedula
+            },
+            ReturnValues: "ALL_NEW"
+        }).promise()
+
+        return {
+            mensaje: "El usuario ha sido actualizado",
+            usuario
+        }
+    } catch (error) {
+        return {
+            error: error.message
+        }
     }
 }
 
 module.exports.deleteUser = async (event) => {
-    const { id } = JSON.parse(event.body)
+    try {
+        const { id } = event.pathParameters;
+        const database = new DynamoDB.DocumentClient()
 
-    if (!id) return { error: "El id del usuario es obligatorio" }
+        const usuario = await database.delete({
+            TableName: "usuarios",
+            Key: { id },
+            ReturnValues: "ALL_OLD"
+        }).promise()
 
-    return {
-        mensaje: "El usuario ha sido eliminado",
-        usuario: {
-            id
+        return {
+            mensaje: "El usuario ha sido eliminado",
+            usuario
+        }
+
+    } catch (error) {
+        return {
+            error: error.message
         }
     }
 }
 
 module.exports.getUsers = async (event) => {
+    const database = new DynamoDB.DocumentClient()
+    const usuarios = await database.scan({ TableName: "usuarios" }).promise()
 
-    return {
-        users: [
-            {
-                id: "id1",
-                nombre: "nombre1",
-                cedula: "cedula1"
-            },
-            {
-                id: "id2",
-                nombre: "nombre2",
-                cedula: "cedula2"
-            },
-            {
-                id: "id3",
-                nombre: "nombre3",
-                cedula: "cedula3"
-            },
-        ]
-    }
+    return { usuarios }
 }
+
