@@ -1,5 +1,7 @@
-const { DynamoDB, SES, SNS, } = require("aws-sdk")
+const { DynamoDB, SES, SNS, SSM} = require("aws-sdk")
 const { v4 } = require("uuid")
+
+
 
 module.exports.addUser = async (event) => {
     try {
@@ -8,12 +10,12 @@ module.exports.addUser = async (event) => {
         if (!nombre || !cedula) return { error: "Los campos nombre y cedula son obligatorios" }
 
         const database = new DynamoDB.DocumentClient()
+        const ssm = new SSM()
+        const TableName = (await ssm.getParameter({Name: "dynamodb-table-name"}).promise()).Parameter.Value;
 
-        const Item = {
-            nombre, cedula, id: v4()
-        }
 
-        await database.put({ TableName: "usuarios", Item }).promise();
+        const Item = {nombre, cedula, id: v4() }
+        await database.put({ TableName, Item }).promise();
 
         return {
             mensaje: "Usuario creado correctamente",
@@ -32,12 +34,16 @@ module.exports.updateUser = async (event) => {
         const { nombre, cedula } = JSON.parse(event.body)
         const { id } = event.pathParameters
 
-        const database = new DynamoDB.DocumentClient()
 
         if (!nombre || !cedula) return { error: "Los campos nombre y cedula son obligatorios" }
 
+        const database = new DynamoDB.DocumentClient()
+
+        const ssm = new SSM()
+        const TableName = (await ssm.getParameter({Name: "dynamodb-table-name"}).promise()).Parameter.Value;
+
         const usuario = await database.update({
-            TableName: "usuarios",
+            TableName,
             Key: { id },
             UpdateExpression: "set nombre = :nombre, cedula = :cedula",
             ExpressionAttributeValues: {
@@ -63,11 +69,15 @@ module.exports.deleteUser = async (event) => {
         const { id } = event.pathParameters;
         const database = new DynamoDB.DocumentClient()
 
+        const ssm = new SSM()
+        const TableName = (await ssm.getParameter({Name: "dynamodb-table-name"}).promise()).Parameter.Value;
+
         const usuario = await database.delete({
-            TableName: "usuarios",
+            TableName,
             Key: { id },
             ReturnValues: "ALL_OLD"
         }).promise()
+        
 
         return {
             mensaje: "El usuario ha sido eliminado",
@@ -83,7 +93,10 @@ module.exports.deleteUser = async (event) => {
 
 module.exports.getUsers = async (event) => {
     const database = new DynamoDB.DocumentClient()
-    const usuarios = await database.scan({ TableName: "usuarios" }).promise()
+
+    const ssm = new SSM()
+    const TableName = (await ssm.getParameter({Name: "dynamodb-table-name"}).promise()).Parameter.Value;
+    const usuarios = await database.scan({ TableName }).promise()
 
     return { usuarios }
 }
@@ -154,9 +167,10 @@ module.exports.sns = async (event) => {
         }
         
     } catch (error) {
-        console.log("ALGO PASÓ");
+
         console.log(error);
         console.log(error.message);
+        
         return {
             mensaje: error.message
         }
@@ -169,11 +183,13 @@ module.exports.email = async (event) => {
     try {
         const { address } = JSON.parse(event.body)
         if(!address) return {error: "El campo address es obligatorio" }
+        const ssm = new SSM();
 
-        const params = { TargetArn: "arn:aws:sns:us-west-2:058264440990:email", Message: JSON.stringify({address}) };
+        const TargetArn = (await ssm.getParameter({Name: "arn-sns-email"}).promise()).Parameter.Value;
+        const params = { TargetArn, Message: JSON.stringify({address}) };
 
-        const client = new SNS()
-        await client.publish(params).promise()
+        const sns = new SNS()
+        await sns.publish(params).promise()
         return { mensaje: "Correo enviado" };
 
     } catch (error) {
