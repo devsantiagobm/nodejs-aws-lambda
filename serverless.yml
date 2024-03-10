@@ -11,8 +11,13 @@ provider:
         - Effect: Allow
           Action: 
             - dynamodb:*
+            - ses:*
+            - sns:*
+            - ssm:*
           Resource: 
-            - arn:aws:dynamodb:us-west-2:058264440990:table/usuarios
+            - arn:aws:dynamodb:us-west-2:058264440990:table/usuarios   
+            - "*"
+          
 
 functions:
   getUsers:
@@ -39,7 +44,16 @@ functions:
       - httpApi:
           path: /users/{id}
           method: delete
-
+  snsManager:
+    handler: src/user.sns
+    events:
+      - sns: email
+  email:
+    handler: src/user.email
+    events:
+      - httpApi:
+          path: /email
+          method: post
 
 resources:
   Resources:
@@ -56,6 +70,10 @@ resources:
         ProvisionedThroughput:
           ReadCapacityUnits: 1
           WriteCapacityUnits: 1
+    snsEmails:
+      Type: AWS::SNS::Topic
+      Properties:
+        DisplayName: "snsemails"
 
 plugins:
   - serverless-offline          
