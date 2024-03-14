@@ -1,7 +1,5 @@
-const { DynamoDB, SES, SNS, SSM} = require("aws-sdk")
+const { DynamoDB, SES, SNS, SSM, CognitoIdentityServiceProvider } = require("aws-sdk")
 const { v4 } = require("uuid")
-
-
 
 module.exports.addUser = async (event) => {
     try {
@@ -11,10 +9,10 @@ module.exports.addUser = async (event) => {
 
         const database = new DynamoDB.DocumentClient()
         const ssm = new SSM()
-        const TableName = (await ssm.getParameter({Name: "dynamodb-table-name"}).promise()).Parameter.Value;
+        const TableName = (await ssm.getParameter({ Name: "dynamodb-table-name" }).promise()).Parameter.Value;
 
 
-        const Item = {nombre, cedula, id: v4() }
+        const Item = { nombre, cedula, id: v4() }
         await database.put({ TableName, Item }).promise();
 
         return {
@@ -40,7 +38,7 @@ module.exports.updateUser = async (event) => {
         const database = new DynamoDB.DocumentClient()
 
         const ssm = new SSM()
-        const TableName = (await ssm.getParameter({Name: "dynamodb-table-name"}).promise()).Parameter.Value;
+        const TableName = (await ssm.getParameter({ Name: "dynamodb-table-name" }).promise()).Parameter.Value;
 
         const usuario = await database.update({
             TableName,
@@ -70,14 +68,14 @@ module.exports.deleteUser = async (event) => {
         const database = new DynamoDB.DocumentClient()
 
         const ssm = new SSM()
-        const TableName = (await ssm.getParameter({Name: "dynamodb-table-name"}).promise()).Parameter.Value;
+        const TableName = (await ssm.getParameter({ Name: "dynamodb-table-name" }).promise()).Parameter.Value;
 
         const usuario = await database.delete({
             TableName,
             Key: { id },
             ReturnValues: "ALL_OLD"
         }).promise()
-        
+
 
         return {
             mensaje: "El usuario ha sido eliminado",
@@ -95,7 +93,7 @@ module.exports.getUsers = async (event) => {
     const database = new DynamoDB.DocumentClient()
 
     const ssm = new SSM()
-    const TableName = (await ssm.getParameter({Name: "dynamodb-table-name"}).promise()).Parameter.Value;
+    const TableName = (await ssm.getParameter({ Name: "dynamodb-table-name" }).promise()).Parameter.Value;
     const usuarios = await database.scan({ TableName }).promise()
 
     return { usuarios }
@@ -103,11 +101,11 @@ module.exports.getUsers = async (event) => {
 
 module.exports.sns = async (event) => {
 
-    
-    try {
-        const {address} = JSON.parse(event.Records[0].Sns.Message);
 
-        if(!address) return {error: "El campo address es obligatorio" }
+    try {
+        const { address } = JSON.parse(event.Records[0].Sns.Message);
+
+        if (!address) return { error: "El campo address es obligatorio" }
 
         const ses = new SES();
 
@@ -161,16 +159,16 @@ module.exports.sns = async (event) => {
             Source: "sanseb290514@gmail.com"
         };
 
-        await ses.sendEmail(emailParams).promise()        
+        await ses.sendEmail(emailParams).promise()
         return {
             mensaje: "Correo enviado"
         }
-        
+
     } catch (error) {
 
         console.log(error);
         console.log(error.message);
-        
+
         return {
             mensaje: error.message
         }
@@ -182,11 +180,11 @@ module.exports.sns = async (event) => {
 module.exports.email = async (event) => {
     try {
         const { address } = JSON.parse(event.body)
-        if(!address) return {error: "El campo address es obligatorio" }
+        if (!address) return { error: "El campo address es obligatorio" }
         const ssm = new SSM();
 
-        const TargetArn = (await ssm.getParameter({Name: "arn-sns-email"}).promise()).Parameter.Value;
-        const params = { TargetArn, Message: JSON.stringify({address}) };
+        const TargetArn = (await ssm.getParameter({ Name: "arn-sns-email" }).promise()).Parameter.Value;
+        const params = { TargetArn, Message: JSON.stringify({ address }) };
 
         const sns = new SNS()
         await sns.publish(params).promise()
@@ -197,3 +195,81 @@ module.exports.email = async (event) => {
     }
 }
 
+
+
+module.exports.signup = async (event) => {
+    try {
+        const { email, password } = JSON.parse(event.body);
+
+        if (!email || !password) return { error: "Los campos email y password son obligatorios" }
+
+        const UserPoolId = "us-west-2_Hfi179ACd";
+        const userPoolClient = "client-name";
+
+        const cognito = new CognitoIdentityServiceProvider();
+        const result = await cognito.adminCreateUser({
+            UserPoolId,
+            Username: email,
+            UserAttributes: [
+                {
+                    Name: "email",
+                    Value: email
+                },
+                {
+                    Name: "email_verified",
+                    Value: "true"
+                },
+            ],
+            MessageAction: "SUPPRESS"
+        }).promise()
+
+        if (!result.User) throw new Error("Ups! Parece que el usuario no pudo ser creado");
+
+        await cognito.adminSetUserPassword({
+            Password: password,
+            UserPoolId,
+            Username: email,
+            Permanent: true
+        }).promise()
+
+        return { mensaje: "Usuario creado correctamente" }
+    } catch (error) {
+        console.log(error);
+        console.log(error.message);
+
+        return {
+            error: error.message
+        }
+    }
+}
+
+module.exports.login = async (event) => {
+    try {
+        const { email, password } = JSON.parse(event.body);
+
+        if (!email || !password) return { error: "Los campos email y password son obligatorios" }
+
+        const UserPoolId = "us-west-2_Hfi179ACd";
+        const userPoolClient = "725aeg3c16l72b22gptobnff3q";
+
+        const cognito = new CognitoIdentityServiceProvider();
+        const response = await cognito.adminInitiateAuth({
+            AuthFlow: "ADMIN_NO_SRP_AUTH",
+            UserPoolId,
+            ClientId: userPoolClient,
+            AuthParameters: {
+                USERNAME: email,
+                PASSWORD: password
+            }
+        }).promise()
+
+        return { mensaje: "Inicio de sesión correcto", /*token: response.AuthenticationResult.AccessToken,*/ response }
+    } catch (error) {
+        console.log(error);
+        console.log(error.message);
+
+        return {
+            error: error.message
+        }
+    }
+}

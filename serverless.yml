@@ -5,6 +5,12 @@ provider:
   name: aws
   runtime: nodejs18.x
   region: us-west-2
+  httpApi:
+    authorizers:
+      userAuthorizer:
+        identitySource: $request.header.Authorization
+        issuerUrl: "https://cognito-idp.us-west-2.amazonaws.com/us-west-2_Hfi179ACd"
+        audience: "725aeg3c16l72b22gptobnff3q"
   iam:
     role:
       statements:  
@@ -14,6 +20,7 @@ provider:
             - ses:*
             - sns:*
             - ssm:*
+            - cognito-idp:*
           Resource: 
             - arn:aws:dynamodb:us-west-2:058264440990:table/usuarios   
             - "*"
@@ -26,24 +33,32 @@ functions:
       - httpApi:
           path: /users
           method: get
+          authorizer:
+            name: userAuthorizer
   addUser:
     handler: src/user.addUser
     events:
       - httpApi:
           path: /users
           method: post
+          authorizer:
+            name: userAuthorizer
   updateUser:
     handler: src/user.updateUser
     events:
       - httpApi:
           path: /users/{id}
           method: put
+          authorizer:
+            name: userAuthorizer
   deleteUser:
     handler: src/user.deleteUser
     events:
       - httpApi:
           path: /users/{id}
           method: delete
+          authorizer:
+            name: userAuthorizer
   snsManager:
     handler: src/user.sns
     events:
@@ -54,9 +69,45 @@ functions:
       - httpApi:
           path: /email
           method: post
+          authorizer:
+            name: userAuthorizer
+  signUp:
+    handler: src/user.signup
+    events:
+      - httpApi:
+          path: /auth/signup
+          method: post
+  login:
+    handler: src/user.login
+    events:
+      - httpApi:
+          path: /auth/login
+          method: post
 
 resources:
   Resources:
+    UserPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        UserPoolName: users-pool
+        Schema:
+          - Name: email
+            Required: true
+        Policies: 
+          PasswordPolicy: 
+            MinimumLength: 6
+        AutoVerifiedAttributes: ["email"]
+    UserClient:
+      Type: AWS::Cognito::UserPoolClient
+      Properties:
+        ClientName: client-name
+        GenerateSecret: false
+        UserPoolId:
+          Ref: UserPool
+        AccessTokenValidity: 5
+        IdTokenValidity: 5
+        ExplicitAuthFlows:
+          - "ADMIN_NO_SRP_AUTH"
     usersTable:
       Type: AWS::DynamoDB::Table
       Properties:
